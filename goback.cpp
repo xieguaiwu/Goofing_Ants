@@ -1,5 +1,6 @@
 #include<iostream>
 #include<random>
+#include<vector>
 
 enum DirTypes {n, s, w, e, nw, ne, sw, se, dir_counts};
 
@@ -14,19 +15,21 @@ unsigned int finmass;//finished ones
 float orb[mx][my];
 
 void clear_stay(unsigned int, unsigned int);
-void ant::settle(mt19937& gen);
-void ant::turn(mt19937& grn);
+void settle(mt19937& gen);
+void turn(mt19937& grn);
 void moving();
+void search_uncover(int);
 
 class ant {
-private:
+public:
+//private:
 	unsigned int pos[2];//moving location
 	unsigned int origin[2];//origin
 	char face;
 	bool fined;
 	bool not_moved;
 	unsigned int left[2];
-public:
+//public:
 	static void settle(mt19937& gen);
 	static void turn(mt19937& grn);
 	static void moving();
@@ -37,12 +40,16 @@ int main() {
 	random_device rd;
 	mt19937 gen(rd());
 	ant::settle(gen);
+	long long turns_used;
 	while (finmass < mass) {
 		ant::turn(gen);
 		moving();
+		turns_used++;
 	}
+	cout << "turns used: " << turns_used << "\n";
 	return 0;
 }
+
 void ant::settle(mt19937& gen) {
 	uniform_int_distribution<int> x_set(1, mx);
 	uniform_int_distribution<int> y_set(1, my);
@@ -56,21 +63,23 @@ void ant::settle(mt19937& gen) {
 	}
 }
 
-void find_which_unmove() {
+int find_which_unmove() {
+	bool ex_not_moved = false;
+	int unmove_buffer;
 	for (int k = 0; k < mass; k++) {
 		if (!p[k].not_moved) {
-			return k;
-			return;
-        } else if(k==mass-1){
-            return mass+1;
-        }
+			ex_not_moved = true;
+			unmove_buffer = k;
+		}
 	}
+	if (ex_not_moved) return unmove_buffer;
+	else return mass + 1;
 }
 
 unsigned int destx, desty;
 bool recheck;
 void turn_set(unsigned TurnSetWhich) {
-	if (p[TurnSetWhich].fined)break;
+	if (p[TurnSetWhich].fined)return;
 	p[TurnSetWhich].face = static_cast<unsigned int>(f_set(gen));
 	desty = p[TurnSetWhich].pos[1];
 	destx = p[TurnSetWhich].pos[0];
@@ -99,12 +108,15 @@ void ant::turn(mt19937& gen) {
 	for (int i = 0; i < mass; i++) {
 		turn_set(i);
 	}
-    if(find_which_unmove()!=mass+1);
+	int return_find_unmove = find_which_unmove();
+	if (return_find_unmove != mass + 1)search_uncover(mass);
 }
 
+bool search_for_unmoved = false;
 void moving(unsigned int MoveWhich) {
 	if (destx == p[MoveWhich].origin[0] || desty == p[MoveWhich].origin[1]) {
 		p[MoveWhich].fined = true;
+		finmass++;
 		return;
 	}
 	if (orb[destx][desty] == 0) {
@@ -113,8 +125,21 @@ void moving(unsigned int MoveWhich) {
 		orb[destx][desty] = MoveWhich + 0.1;
 	} else {
 		p[MoveWhich].not_moved = true;
+		search_for_unmoved = true;
 		p[MoveWhich].left[0] = destx;
 		p[MoveWhich].left[1] = desty;
+	}
+}
+
+void search_uncover(int stop_place) {
+	if (!search_for_unmoved) {
+		for (int j = 0; j < stop_place; j++) {
+			if (p[j].not_moved) {
+				destx = p[j].face;
+				desty = p[j].face;
+				moving(j);
+			}
+		}
 	}
 }
 void clear_stay(unsigned int clearx, unsigned int cleary) {
