@@ -8,16 +8,14 @@ using namespace std;
 
 const unsigned dirs = dir_counts;
 const unsigned char mx = 100, my = 100;
-const unsigned int mass = mx * my * 0.9;
-unsigned int finmass;//finished ones
+//const unsigned int mass = mx * my * 0.9;
+const unsigned int mass = 10;
 
+unsigned int finmass = 0;//finished ones
 
-float orb[mx][my];
+float orb[mx][my] = {0};
 
 void clear_stay(unsigned int, unsigned int);
-void settle(mt19937& gen);
-void turn(mt19937& grn);
-void moving();
 void search_uncover(int);
 
 class ant {
@@ -32,7 +30,7 @@ public:
 //public:
 	static void settle(mt19937& gen);
 	static void turn(mt19937& grn);
-	static void moving();
+	static void moving(unsigned int MoveWhich, unsigned int destx, unsigned int desty);
 };
 ant p[mass];
 
@@ -40,10 +38,9 @@ int main() {
 	random_device rd;
 	mt19937 gen(rd());
 	ant::settle(gen);
-	long long turns_used;
+	long long turns_used = 0;
 	while (finmass < mass) {
 		ant::turn(gen);
-		moving();
 		turns_used++;
 	}
 	cout << "turns used: " << turns_used << "\n";
@@ -51,42 +48,43 @@ int main() {
 }
 
 void ant::settle(mt19937& gen) {
-	uniform_int_distribution<int> x_set(1, mx);
-	uniform_int_distribution<int> y_set(1, my);
+	uniform_int_distribution<int> x_set(0, mx - 1);
+	uniform_int_distribution<int> y_set(0, my - 1);
 	for (int i = 0; i < mass; i++) {
 		p[i].origin[0] = static_cast<unsigned int>(x_set(gen));
 		p[i].origin[1] = static_cast<unsigned int>(y_set(gen));
 		p[i].pos[0] = p[i].origin[0];
 		p[i].pos[1] = p[i].origin[1];
+		p[i].fined = false;
+		p[i].not_moved = false;
 
-		if (orb[p[i].pos[0]][p[i].pos[1]] != 0) orb[p[i].pos[0]][p[i].pos[1]] = i + 0.1;
+		if (orb[p[i].pos[0]][p[i].pos[1]] == 0)
+			orb[p[i].pos[0]][p[i].pos[1]] = i + 0.1;
 	}
 }
 
 int find_which_unmove() {
-	bool ex_not_moved = false;
-	int unmove_buffer;
 	for (int k = 0; k < mass; k++) {
-		if (!p[k].not_moved) {
-			ex_not_moved = true;
-			unmove_buffer = k;
+		if (p[k].not_moved) {
+			return k;
 		}
 	}
-	if (ex_not_moved) return unmove_buffer;
-	else return mass + 1;
+	return mass + 1;
 }
 
 unsigned int destx, desty;
-bool recheck;
-void turn_set(unsigned TurnSetWhich) {
-	if (p[TurnSetWhich].fined)return;
+bool recheck = false;
+
+void turn_set(unsigned TurnSetWhich, mt19937& gen) {
+	if (p[TurnSetWhich].fined) return;
+	uniform_int_distribution<int> f_set(0, dirs - 1);
 	p[TurnSetWhich].face = static_cast<unsigned int>(f_set(gen));
 	desty = p[TurnSetWhich].pos[1];
 	destx = p[TurnSetWhich].pos[0];
 	if (p[TurnSetWhich].face == n) desty++;
-	else if (p[TurnSetWhich].face == s)desty--;
+	else if (p[TurnSetWhich].face == s) desty--;
 	else if (p[TurnSetWhich].face == w) destx--;
-	else if (p[TurnSetWhich].face == s) destx++;
+	else if (p[TurnSetWhich].face == e) destx++;
 	else if (p[TurnSetWhich].face == nw) {
 		destx--;
 		desty++;
@@ -100,28 +98,39 @@ void turn_set(unsigned TurnSetWhich) {
 		destx++;
 		desty--;
 	}
-	moving();
+
+	// Check boundaries
+	if (destx >= mx) destx = mx - 1;
+	if (desty >= my) desty = my - 1;
+
+	ant::moving(TurnSetWhich, destx, desty);
 }
 
 void ant::turn(mt19937& gen) {
-	uniform_int_distribution<int> f_set(1, dirs);
 	for (int i = 0; i < mass; i++) {
-		turn_set(i);
+		turn_set(i, gen);
 	}
 	int return_find_unmove = find_which_unmove();
-	if (return_find_unmove != mass + 1)search_uncover(mass);
+	if (return_find_unmove != mass + 1) search_uncover(mass);
 }
 
 bool search_for_unmoved = false;
-void moving(unsigned int MoveWhich) {
-	if (destx == p[MoveWhich].origin[0] || desty == p[MoveWhich].origin[1]) {
+
+void ant::moving(unsigned int MoveWhich, unsigned int destx, unsigned int desty) {
+	if (p[MoveWhich].fined) return;
+
+	if (destx == p[MoveWhich].origin[0] && desty == p[MoveWhich].origin[1]) {
 		p[MoveWhich].fined = true;
 		finmass++;
+		clear_stay(p[MoveWhich].pos[0], p[MoveWhich].pos[1]);
 		return;
 	}
+
 	if (orb[destx][desty] == 0) {
 		p[MoveWhich].not_moved = false;
 		clear_stay(p[MoveWhich].pos[0], p[MoveWhich].pos[1]);
+		p[MoveWhich].pos[0] = destx;
+		p[MoveWhich].pos[1] = desty;
 		orb[destx][desty] = MoveWhich + 0.1;
 	} else {
 		p[MoveWhich].not_moved = true;
@@ -132,16 +141,18 @@ void moving(unsigned int MoveWhich) {
 }
 
 void search_uncover(int stop_place) {
-	if (!search_for_unmoved) {
+	if (search_for_unmoved) {
 		for (int j = 0; j < stop_place; j++) {
 			if (p[j].not_moved) {
-				destx = p[j].face;
-				desty = p[j].face;
-				moving(j);
+				unsigned int destx = p[j].left[0];
+				unsigned int desty = p[j].left[1];
+				ant::moving(j, destx, desty);
 			}
 		}
 	}
+	search_for_unmoved = false;
 }
+
 void clear_stay(unsigned int clearx, unsigned int cleary) {
 	orb[clearx][cleary] = 0;
 }
